@@ -1,0 +1,83 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-04-01"
+---
+
+
+# Stepwise selection based on AIC and BIC
+
+First let's perform AIC based stepwise selection
+```{r, eval=TRUE, echo = T}
+## Stepwise elimination based on AIC ##
+sel.var.aic <- step(logit.mod1, trace = 0, k = 2, direction = "both") 
+select_var_aic<-attr(terms(sel.var.aic), "term.labels")   
+select_var_aic
+```
+
+Now perform BIC based selection,
+```{r, eval=TRUE, echo = T}
+## Stepwise elimination based on AIC ##
+sel.var.bic <- step(logit.mod1, trace = 0, k = log(nrow(lbw)), direction = "both") 
+select_var_bic<-attr(terms(sel.var.bic), "term.labels")   
+select_var_bic
+```
+
+## Model calibration with cross-validation and bootstrap ##
+
+```{r, eval=TRUE, echo = T}
+library(rms)
+
+## Fit the model with lrm from rms package ##
+lrm.final <- lrm(lowbirthweight ~ ., data = lbw[,which(colnames(lbw) %in% c(select_var_aic, "lowbirthweight"))], x =TRUE, y = TRUE, model= T)
+cross.calib <- calibrate(lrm.final, method="crossvalidation", B=10) # model calibration
+plot(cross.calib, las=1, xlab = "Predicted Probability")
+```
+
+## Discrimination with ROC curve
+```{r, eval=TRUE, echo = T}
+library(pROC)
+p <- predict(lrm.final, type = "fitted")
+
+roc_logit <- roc(lbw$lowbirthweight ~ p)
+## The True Positive Rate ##
+TPR <- roc_logit$sensitivities
+## The False Positive Rate ##
+FPR <- 1 - roc_logit$specificities
+
+plot(FPR, TPR, xlim = c(0,1), ylim = c(0,1), type = 'l', lty = 1, lwd = 2,col = 'red')
+abline(a = 0, b = 1, lty = 2, col = 'blue')
+text(0.7,0.4,label = paste("AUC = ", round(auc(roc_logit),2)))
+
+auc(roc_logit)
+```
+
+## Plot the dfbetas and deviance residuals
+
+## Dfbetas
+```{r, eval=TRUE, echo = T}
+## Dfbetas ##
+
+log.mod.final <- glm(lowbirthweight ~ marital + weeks + gained, family = binomial, data = lbw)
+df.final <- dfbetas(log.mod.final)
+head(df.final)
+
+par(family = 'serif')
+plot(lbw$gained, df.final[,3], xlab='Weight gained by mother', 
+     ylab='dfbeta')
+lines(lowess(lbw$gained, df.final[,3]), lwd=2, col='blue')
+abline(h=0, lty='dotted')
+abline(h=-2/sqrt(nrow(df.final)), lty='dotted')
+abline(h=2/sqrt(nrow(df.final)), lty='dotted')
+```
+
+## Deviance residuals
+```{r, eval=TRUE, echo = T}
+## Plot the deviance residuals ##
+res.dev <- residuals(log.mod.final, type = "deviance")
+par(family = 'serif')
+plot(lbw$gained, res.dev, xlab='Weight gained by mother', 
+     ylab='Deviance Residuals')
+lines(lowess(lbw$gained, res.dev), lwd=2, col='blue')
+abline(h=0, lty='dotted')
+```
